@@ -1,0 +1,14 @@
+services:
+  backend:
+    image: ghcr.io/bonnemai/curvefitter:main@sha256:da1f9af56da2006da5b8eef9a3db6fbb06fd6bfec75b2aca6375174a4ef670d4
+    ports:
+      - "8000:8000"
+
+  frontend:
+    image: ghcr.io/bonnemai/curvefitter_ui:sha-f6282fe@sha256:19643acc5e02fed60fcd66ec2bad1008bf07cf5ec7af90286d679ed39f21ea68
+    depends_on:
+      - backend
+    # environment:
+    #   BACKEND_URL: "http://backend:8000"
+    # ports:
+    #   - "4173:4173"

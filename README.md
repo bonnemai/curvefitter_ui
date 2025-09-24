@@ -38,6 +38,8 @@ ghcr.io/<github-owner>/<repo>
 
 For example, pushing to `main` in `your-org/curve_fitter_ui` creates `ghcr.io/your-org/curve_fitter_ui:main`.
 
+The workflow builds multi-architecture images (`linux/amd64` and `linux/arm64`) and applies a `latest` tag for the default branch so the image works on both Linux and macOS hosts.
+
 ### Repository configuration
 1. Ensure `Settings → Actions → General → Workflow permissions` grants the default `GITHUB_TOKEN` **Read and write** access to packages.
 2. (Optional) Update the workflow if you prefer a different tag strategy or registry.
