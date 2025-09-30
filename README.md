@@ -15,9 +15,17 @@ A React + D3 single page app that streams yield curves over SSE and renders the 
 Build a local image:
 
 ```bash
-docker build -t curve-fitter-ui .
-docker run --rm -p 8080:80 curve-fitter-ui
+docker build -t curve-fitter-ui:latest .
+docker run --rm -p 8080:80 \
+  -e STREAM_URL="http://localhost:8000/curves/stream" \
+  -e APP_ENV="prd" \
+  curve-fitter-ui:latest
 ```
+
+### Runtime configuration
+
+- `STREAM_URL` controls the SSE endpoint the UI connects to. Override it when starting the container, e.g. `-e STREAM_URL="http://backend:8000/curves/stream"`.
+- `APP_ENV` labels the environment (`prd` by default). The UI reads both values from `config.js`, which is generated from `config.template.js` during container start-up.
 
 ## Continuous Delivery to GHCR
 
@@ -45,3 +53,7 @@ The workflow builds multi-architecture images (`linux/amd64` and `linux/arm64`) 
 2. (Optional) Update the workflow if you prefer a different tag strategy or registry.
 
 No additional secrets are required—the workflow logs in with the provided `GITHUB_TOKEN`.
+
+---
+
+Olivier Bonnemaison · https://github.com/bonnemai/curvefitter_ui

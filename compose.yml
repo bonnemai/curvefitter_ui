@@ -5,8 +5,11 @@ services:
       - "8000:8000"
 
   frontend:
-    image: ghcr.io/bonnemai/curvefitter_ui:main@sha256:780a57d6eb971948e4eb3483a6d739446cc3afa6e46d9f2ab5688e180f19a70e
+    image: ghcr.io/bonnemai/curvefitter_ui:latest
     depends_on:
       - backend
     ports:
       - "8080:80"
+    environment:
+      STREAM_URL: http://backend:8000/curves/stream
+      APP_ENV: prd

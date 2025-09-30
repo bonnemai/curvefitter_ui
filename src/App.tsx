@@ -2,9 +2,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useEventSource } from './hooks/useEventSource';
 import { CurveMessage } from './types/curve';
 import { YieldCurveChart } from './components/YieldCurveChart';
+import { appConfig } from './config';
 import './App.css';
-
-const STREAM_URL = 'http://localhost:8000/curves/stream';
 
 type ConnectionState = 'connecting' | 'open' | 'error';
 
@@ -34,7 +33,7 @@ export default function App() {
     setLastError('Connection lost. Retrying automatically...');
   }, []);
 
-  useEventSource<CurveMessage>(STREAM_URL, {
+  useEventSource<CurveMessage>(appConfig.STREAM_URL, {
     onMessage: handleMessage,
     onOpen: handleOpen,
     onError: handleError,
@@ -97,6 +96,13 @@ export default function App() {
 
         {lastError && <p className="app__error" role="alert">{lastError}</p>}
       </main>
+
+      <footer className="app__footer">
+        Olivier Bonnemaison ·{' '}
+        <a href="https://github.com/bonnemai/curvefitter_ui" target="_blank" rel="noreferrer">
+          github.com/bonnemai/curvefitter_ui
+        </a>
+      </footer>
     </div>
   );
 }
