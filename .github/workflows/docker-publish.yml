@@ -186,7 +186,7 @@ jobs:
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' && secrets.AWS_ROLE_TO_ASSUME != '' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' && env.AWS_ROLE_TO_ASSUME != '' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0  # v3
