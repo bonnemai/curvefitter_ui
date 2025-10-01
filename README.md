@@ -27,32 +27,39 @@ docker run --rm -p 8080:80 \
 - `STREAM_URL` controls the SSE endpoint the UI connects to. Override it when starting the container, e.g. `-e STREAM_URL="http://backend:8000/curves/stream"`.
 - `APP_ENV` labels the environment (`prd` by default). The UI reads both values from `config.js`, which is generated from `config.template.js` during container start-up.
 
-## Continuous Delivery to GHCR
+## AWS Lambda
 
-A GitHub Actions workflow at `.github/workflows/docker-publish.yml` builds the Docker image and pushes it to GitHub Container Registry (GHCR).
+- Run `./run.sh lambda` (or `npm run build:lambda`) to build the SPA and stage the Lambda bundle under `lambda/build`.
+- The Lambda bundle is archived as `lambda/curve-fitter-ui-lambda.zip`; upload it when creating the function.
+- Configure the function with runtime **Node.js 18.x** (or newer) and handler `lambda/handler.handler`.
+- Provide `STREAM_URL` and `APP_ENV` environment variables to override the defaults used by `config.js`. Without overrides the Lambda bundle points to `http://localhost:8080/curves/stream`.
+- Attach an HTTP API (or Function URL) to serve the UI; the handler responds to `GET`/`HEAD` and serves the prebuilt assets.
+- Client-side routes fall back to `index.html`, so deep links keep working.
 
-### When it runs
-- Any push to `main`
-- Tag pushes that start with `v` (for example `v1.2.0`)
-- Pull requests (build only, no push)
-- Manual trigger via the **Run workflow** button
+## Continuous Delivery
 
-### Registry destination
-Images are published to:
+The GitHub Actions workflow at `.github/workflows/docker-publish.yml` now runs quality gates, publishes container images, and updates AWS ECS.
 
-```
-ghcr.io/<github-owner>/<repo>
-```
+### Quality gates (Sonar)
+- Runs when `SONAR_TOKEN`, `SONAR_PROJECT_KEY`, and (for SonarCloud) `SONAR_ORGANIZATION` secrets are present.
+- Installs dependencies, builds the app, and executes the Sonar analysis via `sonarsource/sonarcloud-github-action`.
+- Skips automatically when the secrets are missing (for example on forks).
 
-For example, pushing to `main` in `your-org/curve_fitter_ui` creates `ghcr.io/your-org/curve_fitter_ui:main`.
+### Container publishing
+- Always builds a multi-architecture image (`linux/amd64`, `linux/arm64`).
+- Pushes image tags to GHCR on pushes to `main` and version tags (`v*`); pull requests build only.
+- When AWS credentials are supplied, the same image is tagged and pushed to Amazon ECR (`${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/<repository>`). Override the repository name via the `ECR_REPOSITORY` repository variable if you do not want the default `curve-fitter-ui`.
 
-The workflow builds multi-architecture images (`linux/amd64` and `linux/arm64`) and applies a `latest` tag for the default branch so the image works on both Linux and macOS hosts.
+### AWS ECS deploy
+- On pushes to `main`, if an ECR image is available, the workflow registers a new task definition revision with the fresh image and updates the target ECS service.
+- Requires secrets for the cluster, service, task definition family, and container name. The job waits for the service to stabilise before finishing.
 
-### Repository configuration
-1. Ensure `Settings → Actions → General → Workflow permissions` grants the default `GITHUB_TOKEN` **Read and write** access to packages.
-2. (Optional) Update the workflow if you prefer a different tag strategy or registry.
+### Required secrets / variables
+- `SONAR_TOKEN`, `SONAR_PROJECT_KEY`, `SONAR_ORGANIZATION`, and (optional) `SONAR_HOST_URL` for the Sonar job.
+- `AWS_ROLE_TO_ASSUME`, `AWS_ACCOUNT_ID`, `AWS_REGION`, `AWS_ECS_CLUSTER`, `AWS_ECS_SERVICE`, `AWS_ECS_TASK_DEFINITION`, `AWS_ECS_CONTAINER_NAME` for the registry push and ECS deployment.
+- (Optional) repository variable `ECR_REPOSITORY` to override the default ECR repository name.
 
-No additional secrets are required—the workflow logs in with the provided `GITHUB_TOKEN`.
+Ensure `Settings → Actions → General → Workflow permissions` grants the default `GITHUB_TOKEN` **Read and write** access to packages so GHCR pushes succeed.
 
 ---
 

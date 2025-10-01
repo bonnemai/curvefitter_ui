@@ -1,4 +1,4 @@
-name: Publish Docker Image
+name: Build, Scan, and Deploy
 
 on:
   push:
@@ -12,18 +12,63 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  NODE_VERSION: 20
 
 jobs:
-  build-and-push:
+  sonar:
+    name: Sonar Quality Scan
     runs-on: ubuntu-latest
-    environment:
-      name: prd
-    permissions:
-      contents: read
-      packages: write
+    if: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build for analysis
+        run: npm run build --if-present
+
+      - name: Sonar analysis
+        uses: sonarsource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >-
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+            -Dsonar.sources=src
+
+  build-and-push:
+    name: Build and Publish Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.version.outputs.value }}
+      ecr-image: ${{ steps.tags.outputs.ecr-image }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+          else
+            tag="${GITHUB_SHA::12}"
+          fi
+          echo "value=${tag}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -47,13 +92,137 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Compute AWS registry info
+        id: aws
+        shell: bash
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          if [[ -n "${AWS_ACCOUNT_ID}" && -n "${AWS_REGION}" ]]; then
+            echo "has-aws=true" >> "$GITHUB_OUTPUT"
+            echo "ecr-registry=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-aws=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && secrets.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-session-name: curveFitterUiPipeline
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Prepare image tag list
+        id: tags
+        shell: bash
+        env:
+          GHCR_TAGS: ${{ steps.meta.outputs.tags }}
+          HAS_AWS: ${{ steps.aws.outputs['has-aws'] }}
+          ECR_REGISTRY: ${{ steps.aws.outputs['ecr-registry'] }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GHCR_TAGS}" ]]; then
+            echo "No GHCR tags produced" >&2
+            exit 1
+          fi
+
+          repo="${ECR_REPOSITORY:-curve-fitter-ui}"
+          tag_list="${GHCR_TAGS}"
+          ecr_image=""
+
+          if [[ "${HAS_AWS}" == "true" && -n "${ECR_REGISTRY}" ]]; then
+            ecr_image="${ECR_REGISTRY}/${repo}:${IMAGE_TAG}"
+            tag_list="${tag_list}
+${ecr_image}
+${ECR_REGISTRY}/${repo}:latest"
+          fi
+
+          {
+            echo "list<<'EOF'"
+            printf '%b\n' "${tag_list}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          if [[ -n "${ecr_image}" ]]; then
+            echo "ecr-image=${ecr_image}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
           platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.tags.outputs.list }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Amazon ECS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-session-name: curveFitterUiDeploy
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update ECS service
+        shell: bash
+        env:
+          IMAGE_URI: ${{ needs.build-and-push.outputs.ecr-image }}
+          ECS_CLUSTER: ${{ secrets.AWS_ECS_CLUSTER }}
+          ECS_SERVICE: ${{ secrets.AWS_ECS_SERVICE }}
+          ECS_TASK_DEFINITION: ${{ secrets.AWS_ECS_TASK_DEFINITION }}
+          ECS_CONTAINER_NAME: ${{ secrets.AWS_ECS_CONTAINER_NAME }}
+        run: |
+          set -euo pipefail
+
+          : "${IMAGE_URI:?Missing image URI from build step}"
+          : "${ECS_CLUSTER:?Missing ECS cluster secret}"
+          : "${ECS_SERVICE:?Missing ECS service secret}"
+          : "${ECS_TASK_DEFINITION:?Missing ECS task definition family}"
+          : "${ECS_CONTAINER_NAME:?Missing ECS container name}"
+
+          workdir="$(mktemp -d)"
+          trap 'rm -rf "${workdir}"' EXIT
+
+          aws ecs describe-task-definition \
+            --task-definition "${ECS_TASK_DEFINITION}" \
+            --query 'taskDefinition' \
+            --output json > "${workdir}/task.json"
+
+          jq --arg IMAGE "${IMAGE_URI}" --arg NAME "${ECS_CONTAINER_NAME}" '
+            .containerDefinitions |= map(if .name == $NAME then .image = $IMAGE else . end)
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+          ' "${workdir}/task.json" > "${workdir}/task-updated.json"
+
+          aws ecs register-task-definition \
+            --cli-input-json "file://${workdir}/task-updated.json" \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text > "${workdir}/new-task-arn"
+
+          new_task_arn="$(cat "${workdir}/new-task-arn")"
+
+          aws ecs update-service \
+            --cluster "${ECS_CLUSTER}" \
+            --service "${ECS_SERVICE}" \
+            --task-definition "${new_task_arn}"
+
+          aws ecs wait services-stable \
+            --cluster "${ECS_CLUSTER}" \
+            --services "${ECS_SERVICE}"
+
+          echo "Service ${ECS_SERVICE} updated to task definition ${new_task_arn} using image ${IMAGE_URI}"

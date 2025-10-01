@@ -4,3 +4,6 @@ npm-debug.log
 dist
 .vscode
 .idea
+
+lambda/build/
+lambda/*.zip
