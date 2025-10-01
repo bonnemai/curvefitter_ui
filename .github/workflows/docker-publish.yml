@@ -24,7 +24,7 @@ jobs:
   sonar:
     name: Sonar Quality Scan
     runs-on: ubuntu-latest
-    if: ${{ env.SONAR_TOKEN != "" }}
+    if: ${{ secrets.SONAR_TOKEN != "" }}
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -49,12 +49,12 @@ jobs:
       - name: Sonar analysis
         uses: sonarsource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92  # v2
         env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >-
-            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
-            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
             -Dsonar.sources=src
   build-and-push:
     name: Build and Publish Images
@@ -110,7 +110,7 @@ jobs:
         shell: bash
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ env.AWS_REGION }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           if [[ -n "${AWS_ACCOUNT_ID}" && -n "${AWS_REGION}" ]]; then
             echo "has-aws=true" >> "$GITHUB_OUTPUT"
