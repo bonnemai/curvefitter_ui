@@ -140,9 +140,7 @@ jobs:
 
           if [[ "${HAS_AWS}" == "true" && -n "${ECR_REGISTRY}" ]]; then
             ecr_image="${ECR_REGISTRY}/${repo}:${IMAGE_TAG}"
-            tag_list="${tag_list}
-${ecr_image}
-${ECR_REGISTRY}/${repo}:latest"
+            tag_list="${tag_list}${ecr_image}${ECR_REGISTRY}/${repo}:latest"
           fi
 
           {
