@@ -121,7 +121,7 @@ jobs:
           fi
 
       - name: Configure AWS credentials
-        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && env.AWS_ROLE_TO_ASSUME != '' }}
+        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && secrets.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0  # v3
         with:
           role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
@@ -129,7 +129,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to Amazon ECR
-        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && env.AWS_ROLE_TO_ASSUME != '' }}
+        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && secrets.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2
 
       - name: Prepare image tag list
@@ -141,7 +141,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.aws.outputs['ecr-registry'] }}
           ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ steps.version.outputs.value }}
-          ROLE_ARN: ${{ env.AWS_ROLE_TO_ASSUME }}
+          ROLE_ARN: ${{ secrets.AWS_ROLE_TO_ASSUME }}
         run: |
           set -euo pipefail
           if [[ -z "${GHCR_TAGS}" ]]; then
@@ -186,14 +186,14 @@ jobs:
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' && env.AWS_ROLE_TO_ASSUME != '' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' && secrets.AWS_ROLE_TO_ASSUME != '' }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0  # v3
         with:
-          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           role-session-name: curveFitterUiDeploy
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Update ECS service
         shell: bash
