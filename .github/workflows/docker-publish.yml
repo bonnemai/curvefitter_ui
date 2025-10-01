@@ -182,6 +182,7 @@ jobs:
     name: Deploy to Amazon ECS
     needs: build-and-push
     runs-on: ubuntu-latest
+    environment: prd
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
