@@ -55,7 +55,7 @@ jobs:
         run: npm run build --if-present
 
       - name: Sonar analysis
-        if: ${{ env.SONAR_TOKEN != '' }}
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' && env.SONAR_PROJECT_KEY != '' }}
         uses: sonarsource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92  # v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
