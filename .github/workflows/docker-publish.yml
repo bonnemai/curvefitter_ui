@@ -18,6 +18,7 @@ jobs:
   sonar:
     name: Sonar Quality Scan
     runs-on: ubuntu-latest
+    environment: prd
     if: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
       - name: Checkout repository
