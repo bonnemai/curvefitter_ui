@@ -16,7 +16,18 @@ function assertDistExists() {
 }
 
 function runBuild() {
-  execSync('npm run build', { cwd: projectRoot, stdio: 'inherit' });
+  const pathSeparator = process.platform === 'win32' ? ';' : ':';
+  const originalPath = process.env.PATH ?? '';
+  const safePathSegments = originalPath
+    .split(pathSeparator)
+    .filter((dir) => dir && !dir.startsWith(projectRoot));
+  const safePath = safePathSegments.length > 0 ? safePathSegments.join(pathSeparator) : originalPath;
+
+  execSync('npm run build', {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    env: { ...process.env, PATH: safePath },
+  });
 }
 
 function resetBuildDir() {
