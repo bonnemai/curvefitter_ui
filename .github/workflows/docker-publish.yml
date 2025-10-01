@@ -24,6 +24,7 @@ jobs:
   sonar:
     name: Sonar Quality Scan
     runs-on: ubuntu-latest
+    environment: prd
     if: ${{ secrets.SONAR_TOKEN != "" }}
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
