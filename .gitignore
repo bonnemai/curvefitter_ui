@@ -7,3 +7,4 @@ dist
 
 lambda/build/
 lambda/*.zip
+.env
