@@ -32,9 +32,7 @@ jobs:
     steps:
       - name: Skip Sonar when token missing
         if: ${{ env.SONAR_TOKEN == '' }}
-        run: |
-          echo "SONAR_TOKEN is empty; skipping SonarCloud analysis."
-          exit 0
+        run: echo "SONAR_TOKEN is empty; skipping SonarCloud analysis."
 
       - name: Checkout repository
         if: ${{ env.SONAR_TOKEN != '' }}
@@ -195,16 +193,22 @@ jobs:
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' && env.AWS_ROLE_TO_ASSUME != '' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' }}
     steps:
+      - name: Skip deploy when role missing
+        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
+        run: echo "AWS_ROLE_TO_ASSUME is empty; skipping deploy steps."
+
       - name: Configure AWS credentials
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0  # v3
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
           role-session-name: curveFitterUiDeploy
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Update ECS service
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         shell: bash
         env:
           IMAGE_URI: ${{ needs.build-and-push.outputs.ecr-image }}
