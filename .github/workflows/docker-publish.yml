@@ -24,6 +24,7 @@ jobs:
   sonar:
     name: Sonar Quality Scan
     runs-on: ubuntu-latest
+    environment: prd
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -165,11 +166,11 @@ jobs:
             tag_list="${tag_list}"$'\n'"${ecr_image}"$'\n'"${ECR_REGISTRY}/${repo}:latest"
           fi
 
-          {
-            echo "list<<EOF"
-            printf '%s\n' "${tag_list}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          cat <<EOF >> "$GITHUB_OUTPUT"
+          list<<EOF
+          ${tag_list}
+          EOF
+          EOF
 
           if [[ -n "${ecr_image}" ]]; then
             echo "ecr-image=${ecr_image}" >> "$GITHUB_OUTPUT"
