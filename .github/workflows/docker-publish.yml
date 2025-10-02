@@ -14,6 +14,7 @@ env:
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
   SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
   SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+  SONAR_AUTOMATIC_ANALYSIS: ${{ vars.SONAR_AUTOMATIC_ANALYSIS }}
   AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
   AWS_REGION: ${{ secrets.AWS_REGION }}
   REGISTRY: ghcr.io
@@ -30,32 +31,37 @@ jobs:
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
       SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+      SONAR_AUTOMATIC_ANALYSIS: ${{ env.SONAR_AUTOMATIC_ANALYSIS }}
     steps:
       - name: Skip Sonar when token missing
         if: ${{ env.SONAR_TOKEN == '' }}
         run: echo "SONAR_TOKEN is empty; skipping SonarCloud analysis."
 
+      - name: Skip Sonar when automatic analysis enabled
+        if: ${{ env.SONAR_AUTOMATIC_ANALYSIS == 'true' }}
+        run: echo "Automatic analysis flag set; skipping CI Sonar scan."
+
       - name: Checkout repository
-        if: ${{ env.SONAR_TOKEN != '' }}
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_AUTOMATIC_ANALYSIS != 'true' }}
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4
 
       - name: Set up Node.js
-        if: ${{ env.SONAR_TOKEN != '' }}
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_AUTOMATIC_ANALYSIS != 'true' }}
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install dependencies
-        if: ${{ env.SONAR_TOKEN != '' }}
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_AUTOMATIC_ANALYSIS != 'true' }}
         run: npm install
 
       - name: Build for analysis
-        if: ${{ env.SONAR_TOKEN != '' }}
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_AUTOMATIC_ANALYSIS != 'true' }}
         run: npm run build --if-present
 
       - name: Sonar analysis
-        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' && env.SONAR_PROJECT_KEY != '' }}
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' && env.SONAR_PROJECT_KEY != '' && env.SONAR_AUTOMATIC_ANALYSIS != 'true' }}
         uses: sonarsource/sonarcloud-github-action@e44258b109568baa0df60ed515909fc6c72cba92  # v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -211,6 +217,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
 
   deploy:
     name: Deploy to Amazon ECS
