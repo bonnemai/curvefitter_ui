@@ -31,7 +31,7 @@ jobs:
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
       SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
-      SONAR_AUTOMATIC_ANALYSIS: ${{ env.SONAR_AUTOMATIC_ANALYSIS }}
+      SONAR_AUTOMATIC_ANALYSIS: ${{ secrets.SONAR_AUTOMATIC_ANALYSIS }}
     steps:
       - name: Skip Sonar when token missing
         if: ${{ env.SONAR_TOKEN == '' }}
@@ -219,7 +219,6 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
           sbom: false
-
   deploy:
     name: Deploy to Amazon ECS
     needs: build-and-push
