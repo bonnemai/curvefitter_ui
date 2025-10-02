@@ -75,6 +75,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     outputs:
       image-tag: ${{ steps.version.outputs.value }}
       ecr-image: ${{ steps.tags.outputs.ecr-image }}
