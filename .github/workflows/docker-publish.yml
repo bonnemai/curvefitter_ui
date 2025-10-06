@@ -72,8 +72,8 @@ jobs:
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
             -Dsonar.sources=src
-  build-and-push:
-    name: Build and Publish Images
+  build-and-deploy:
+    name: Build and Deploy to S3
     runs-on: ubuntu-latest
     environment: prd
     env:
@@ -81,158 +81,23 @@ jobs:
       AWS_REGION: ${{ secrets.AWS_REGION }}
     permissions:
       contents: read
-      packages: write
       id-token: write
-    outputs:
-      image-tag: ${{ steps.version.outputs.value }}
-      ecr-image: ${{ steps.tags.outputs.ecr-image }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955  # v4
 
-      - name: Determine image tag
-        id: version
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            tag="${GITHUB_REF#refs/tags/}"
-          else
-            tag="${GITHUB_SHA::12}"
-          fi
-          echo "value=${tag}" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # v3
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f  # v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=tag
-            type=ref,event=pr
-            type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Compute AWS registry info
-        id: aws
-        shell: bash
-        env:
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-        run: |
-          if [[ -n "${AWS_ACCOUNT_ID}" && -n "${AWS_REGION}" ]]; then
-            echo "has-aws=true" >> "$GITHUB_OUTPUT"
-            echo "ecr-registry=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
-          else
-            echo "has-aws=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Resolve AWS role ARN
-        id: role-arn
-        if: ${{ steps.aws.outputs['has-aws'] == 'true' && env.AWS_ROLE_TO_ASSUME != '' }}
-        shell: bash
-        env:
-          ROLE_INPUT: ${{ env.AWS_ROLE_TO_ASSUME }}
-          ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-
-          role_input="${ROLE_INPUT}"
-          if [[ "${role_input}" == arn:aws:iam::* ]]; then
-            echo "arn=${role_input}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ -z "${ACCOUNT_ID}" ]]; then
-            echo "AWS account ID secret is required when providing a role name" >&2
-            exit 1
-          fi
-
-          role_path="${role_input#role/}"
-          echo "arn=arn:aws:iam::${ACCOUNT_ID}:role/${role_path}" >> "$GITHUB_OUTPUT"
-
-      - name: Configure AWS credentials
-        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && steps.role-arn.outputs.arn != '' }}
-        uses: aws-actions/configure-aws-credentials@50ac8dd1e1b10d09dac7b8727528b91bed831ac0  # v3
-        with:
-          role-to-assume: ${{ steps.role-arn.outputs.arn }}
-          role-session-name: curveFitterUiPipeline
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Log in to Amazon ECR
-        if: ${{ steps.aws.outputs['has-aws'] == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && steps.role-arn.outputs.arn != '' }}
-        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2
-
-      - name: Prepare image tag list
-        id: tags
-        shell: bash
-        env:
-          GHCR_TAGS: ${{ steps.meta.outputs.tags }}
-          HAS_AWS: ${{ steps.aws.outputs['has-aws'] }}
-          ECR_REGISTRY: ${{ steps.aws.outputs['ecr-registry'] }}
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ steps.version.outputs.value }}
-          ROLE_ARN: ${{ steps.role-arn.outputs.arn }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${GHCR_TAGS}" ]]; then
-            echo "No GHCR tags produced" >&2
-            exit 1
-          fi
-
-          repo="${ECR_REPOSITORY:-curve-fitter-ui}"
-          tag_list="${GHCR_TAGS}"
-          ecr_image=""
-
-          if [[ "${HAS_AWS}" == "true" && -n "${ECR_REGISTRY}" && -n "${ROLE_ARN}" ]]; then
-            ecr_image="${ECR_REGISTRY}/${repo}:${IMAGE_TAG}"
-            tag_list="${tag_list}"$'\n'"${ecr_image}"$'\n'"${ECR_REGISTRY}/${repo}:latest"
-          fi
-
-          {
-            echo "list<<EOF"
-            printf '%s\n' "${tag_list}"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          if [[ -n "${ecr_image}" ]]; then
-            echo "ecr-image=${ecr_image}" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Build and push
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
-        with:
-          context: .
-          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) }}
-          platforms: ${{ env.DOCKER_PLATFORMS }}
-          tags: ${{ steps.tags.outputs.list }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
-          sbom: false
-  deploy:
-    name: Deploy to Amazon ECS
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    environment: prd
-    env:
-      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.outputs.ecr-image != '' }}
-    steps:
-      - name: Skip deploy when role missing
-        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
-        run: echo "AWS_ROLE_TO_ASSUME is empty; skipping deploy steps."
+      - name: Build application
+        run: npm run build
 
       - name: Resolve AWS role ARN
         id: role-arn
@@ -266,51 +131,13 @@ jobs:
           role-session-name: curveFitterUiDeploy
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update ECS service
+      - name: Deploy to S3
         if: ${{ env.AWS_ROLE_TO_ASSUME != '' && steps.role-arn.outputs.arn != '' }}
         shell: bash
         env:
-          IMAGE_URI: ${{ needs.build-and-push.outputs.ecr-image }}
-          ECS_CLUSTER: ${{ secrets.AWS_ECS_CLUSTER }}
-          ECS_SERVICE: ${{ secrets.AWS_ECS_SERVICE }}
-          ECS_TASK_DEFINITION: ${{ secrets.AWS_ECS_TASK_DEFINITION }}
-          ECS_CONTAINER_NAME: ${{ secrets.AWS_ECS_CONTAINER_NAME }}
+          S3_BUCKET: ${{ vars.S3_BUCKET || 'curve-fitter-ui' }}
         run: |
           set -euo pipefail
-
-          : "${IMAGE_URI:?Missing image URI from build step}"
-          : "${ECS_CLUSTER:?Missing ECS cluster secret}"
-          : "${ECS_SERVICE:?Missing ECS service secret}"
-          : "${ECS_TASK_DEFINITION:?Missing ECS task definition family}"
-          : "${ECS_CONTAINER_NAME:?Missing ECS container name}"
-
-          workdir="$(mktemp -d)"
-          trap 'rm -rf "${workdir}"' EXIT
-
-          aws ecs describe-task-definition \
-            --task-definition "${ECS_TASK_DEFINITION}" \
-            --query 'taskDefinition' \
-            --output json > "${workdir}/task.json"
-
-          jq --arg IMAGE "${IMAGE_URI}" --arg NAME "${ECS_CONTAINER_NAME}" '
-            .containerDefinitions |= map(if .name == $NAME then .image = $IMAGE else . end)
-            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
-          ' "${workdir}/task.json" > "${workdir}/task-updated.json"
-
-          aws ecs register-task-definition \
-            --cli-input-json "file://${workdir}/task-updated.json" \
-            --query 'taskDefinition.taskDefinitionArn' \
-            --output text > "${workdir}/new-task-arn"
-
-          new_task_arn="$(cat "${workdir}/new-task-arn")"
-
-          aws ecs update-service \
-            --cluster "${ECS_CLUSTER}" \
-            --service "${ECS_SERVICE}" \
-            --task-definition "${new_task_arn}"
-
-          aws ecs wait services-stable \
-            --cluster "${ECS_CLUSTER}" \
-            --services "${ECS_SERVICE}"
-
-          echo "Service ${ECS_SERVICE} updated to task definition ${new_task_arn} using image ${IMAGE_URI}"
+          aws s3 sync dist/ "s3://${S3_BUCKET}/" --delete --cache-control "public, max-age=31536000, immutable"
+          aws s3 cp "s3://${S3_BUCKET}/index.html" "s3://${S3_BUCKET}/index.html" --cache-control "public, max-age=0, must-revalidate" --metadata-directive REPLACE
+          echo "Successfully deployed to S3 bucket: ${S3_BUCKET}"
