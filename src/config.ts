@@ -1,5 +1,5 @@
 const defaultConfig = {
-  STREAM_URL: 'http://localhost:8000/curves/stream',
+  STREAM_URL: 'https://2pzmybbrkdhzf75k6wz24dflua0hbiko.lambda-url.eu-west-2.on.aws',
   APP_ENV: 'dev',
 };
 

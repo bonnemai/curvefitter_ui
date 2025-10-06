@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODE="${1:-docker}"
 ZIP_NAME="${ZIP_NAME:-curve-fitter-ui-lambda.zip}"
-
+STREAM_URL='https://2pzmybbrkdhzf75k6wz24dflua0hbiko.lambda-url.eu-west-2.on.aws/curves/stream'  
 if [[ "${MODE}" == "lambda" ]]; then
   npm run build:lambda
   pushd lambda/build >/dev/null

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useEventSource } from './hooks/useEventSource';
+import { usePolling } from './hooks/usePolling';
 import { CurveMessage } from './types/curve';
 import { YieldCurveChart } from './components/YieldCurveChart';
 import { appConfig } from './config';
@@ -16,27 +16,28 @@ export default function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [lastError, setLastError] = useState<string | null>(null);
 
-  const handleMessage = useCallback((data: CurveMessage) => {
+  const handleData = useCallback((data: CurveMessage) => {
     setCurve(data);
     setConnectionState('open');
     setLastError(null);
   }, []);
 
-  const handleOpen = useCallback(() => {
+  const handleSuccess = useCallback(() => {
     setConnectionState('open');
     setLastError(null);
   }, []);
 
-  const handleError = useCallback((event: Event) => {
-    console.error('EventSource error', event);
+  const handleError = useCallback((error: Error) => {
+    console.error('Polling error', error);
     setConnectionState('error');
     setLastError('Connection lost. Retrying automatically...');
   }, []);
 
-  useEventSource<CurveMessage>(appConfig.STREAM_URL, {
-    onMessage: handleMessage,
-    onOpen: handleOpen,
+  usePolling<CurveMessage>(`${appConfig.STREAM_URL}/curves`, {
+    onData: handleData,
+    onSuccess: handleSuccess,
     onError: handleError,
+    interval: 1000,
   });
 
   const statusLabel = useMemo(() => {
@@ -98,9 +99,12 @@ export default function App() {
       </main>
 
       <footer className="app__footer">
-        Olivier Bonnemaison ·{' '}
         <a href="https://github.com/bonnemai/curvefitter_ui" target="_blank" rel="noreferrer">
           github.com/bonnemai/curvefitter_ui
+        </a>
+        {' · '}
+        <a href="https://staging.d3iwsh8gt9f3of.amplifyapp.com" target="_blank" rel="noreferrer">
+          Olivier Bonnemaison
         </a>
       </footer>
     </div>
